@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>数字探し 1-25 スピードテスト</title>
+  <!-- Tailwind CSS (CDN) -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- FontAwesome (Icons) -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <style>
+    /* 間違えた時の揺れるアニメーション */
+    @keyframes shake {
+      0%, 100% { transform: translateX(0); }
+      20%, 60% { transform: translateX(-6px); }
+      40%, 80% { transform: translateX(6px); }
+    }
+    .animate-shake {
+      animation: shake 0.3s ease-in-out;
+    }
+  </style>
+</head>
+<body class="bg-slate-900 text-slate-100 min-h-screen flex flex-col items-center justify-center p-4 font-sans select-none">
+
+  <!-- メインコンテナ -->
+  <div class="w-full max-w-md bg-slate-800/80 backdrop-blur-md rounded-2xl p-6 shadow-2xl border border-slate-700/50">
+    
+    <!-- タイトル -->
+    <header class="text-center mb-6">
+      <h1 class="text-2xl font-bold bg-gradient-to-r from-blue-400 to-indigo-400 bg-clip-text text-transparent">
+        数字探し 1-25 スピードテスト
+      </h1>
+      <p class="text-xs text-slate-400 mt-1">1から順に25までタップしてください</p>
+    </header>
+
+    <!-- 情報ディスプレイ（タイマー / ターゲット / ベストタイム） -->
+    <div class="grid grid-cols-3 gap-3 mb-6 bg-slate-950/60 p-4 rounded-xl border border-slate-800 text-center">
+      <!-- ベストタイム -->
+      <div class="flex flex-col">
+        <span class="text-[10px] font-semibold tracking-wider text-slate-400 uppercase">Best</span>
+        <span id="best-time" class="text-base font-bold text-amber-400 mt-1">--.---</span>
+      </div>
+
+      <!-- タイマー -->
+      <div class="flex flex-col border-x border-slate-800 px-2">
+        <span class="text-[10px] font-semibold tracking-wider text-slate-400 uppercase">Time</span>
+        <span id="timer" class="text-xl font-extrabold text-blue-400 font-mono tracking-tight mt-0.5">0.000</span>
+      </div>
+
+      <!-- 次の数字 -->
+      <div class="flex flex-col">
+        <span class="text-[10px] font-semibold tracking-wider text-slate-400 uppercase">Next</span>
+        <span id="next-num" class="text-xl font-black text-emerald-400 mt-0.5">-</span>
+      </div>
+    </div>
+
+    <!-- 5×5 ゲームボード -->
+    <div id="grid" class="grid grid-cols-5 gap-2.5 aspect-square w-full mb-6 relative">
+      <!-- JSで動的にボタン生成 -->
+    </div>
+
+    <!-- コントロールボタン -->
+    <div class="flex gap-3">
+      <button id="start-btn" onclick="startGame()" class="flex-1 py-3.5 px-4 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 font-bold rounded-xl shadow-lg shadow-blue-600/30 active:scale-95 transition flex items-center justify-center gap-2 text-white">
+        <i class="fa-solid fa-play text-sm"></i>
+        <span>スタート</span>
+      </button>
+    </div>
+  </div>
+
+  <!-- 結果表示モーダル -->
+  <div id="modal" class="fixed inset-0 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4 hidden z-50">
+    <div class="bg-slate-800 border border-slate-700 rounded-2xl p-6 max-w-xs w-full text-center shadow-2xl transform transition-all scale-100">
+      <div id="new-record-badge" class="hidden inline-block bg-amber-500/20 text-amber-300 border border-amber-500/30 text-xs px-3 py-1 rounded-full font-bold mb-3 animate-pulse">
+        🎉 新記録達成！
+      </div>
+      <h2 class="text-xl font-bold text-white mb-1">ゲームクリア！</h2>
+      <p class="text-slate-400 text-xs mb-4">あなたの記録</p>
+      
+      <div class="text-4xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-emerald-400 font-mono mb-6" id="final-time">
+        0.000s
+      </div>
+
+      <div class="flex flex-col gap-2.5">
+        <button onclick="closeModalAndStart()" class="w-full py-3 bg-blue-600 hover:bg-blue-500 font-bold rounded-xl text-white shadow-lg shadow-blue-600/30 active:scale-95 transition">
+          もう一度挑戦
+        </button>
+        <button onclick="quitGame()" class="w-full py-2.5 bg-slate-700 hover:bg-slate-600 font-semibold rounded-xl text-slate-300 active:scale-95 transition text-sm">
+          やめる
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    let numbers = [];
+    let currentTarget = 1;
+    let startTime = null;
+    let timerInterval = null;
+    let isPlaying = false;
+    let bestTime = localStorage.getItem('number_search_best') || null;
+
+    const gridEl = document.getElementById('grid');
+    const timerEl = document.getElementById('timer');
+    const nextNumEl = document.getElementById('next-num');
+    const bestTimeEl = document.getElementById('best-time');
+    const startBtn = document.getElementById('start-btn');
+    const modal = document.getElementById('modal');
+
+    // 初期表示の設定
+    if (bestTime) {
+      bestTimeEl.textContent = parseFloat(bestTime).toFixed(3);
+    }
+    initBoard();
+
+    // 初期状態のボード（スタート前）
+    function initBoard() {
+      gridEl.innerHTML = '';
+      for (let i = 0; i < 25; i++) {
+        const btn = document.createElement('button');
+        btn.className = `w-full h-full bg-slate-800/50 border border-slate-700/50 rounded-xl font-bold text-slate-600 flex items-center justify-center opacity-40 cursor-not-allowed`;
+        btn.innerHTML = '<i class="fa-solid fa-lock text-sm"></i>';
+        btn.disabled = true;
+        gridEl.appendChild(btn);
+      }
+      nextNumEl.textContent = '-';
+      timerEl.textContent = '0.000';
+      startBtn.innerHTML = '<i class="fa-solid fa-play text-sm"></i> <span>スタート</span>';
+    }
+
+    // ゲームスタート
+    function startGame() {
+      currentTarget = 1;
+      nextNumEl.textContent = '1';
+      timerEl.textContent = '0.000';
+      isPlaying = true;
+      startBtn.innerHTML = '<i class="fa-solid fa-rotate-right text-sm"></i> <span>リセット</span>';
+
+      // 1〜25 の数字をランダムシャッフル
+      numbers = Array.from({ length: 25 }, (_, i) => i + 1);
+      for (let i = numbers.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [numbers[i], numbers[j]] = [numbers[j], numbers[i]];
+      }
+
+      // ボード描画
+      gridEl.innerHTML = '';
+      numbers.forEach(num => {
+        const btn = document.createElement('button');
+        btn.className = `w-full h-full bg-blue-600 hover:bg-blue-500 active:scale-95 border border-blue-500/50 rounded-xl font-bold text-2xl text-white shadow-lg shadow-blue-900/20 flex items-center justify-center transition cursor-pointer`;
+        btn.textContent = num;
+        btn.onclick = () => handleTap(btn, num);
+        gridEl.appendChild(btn);
+      });
+
+      // 計測開始
+      if (timerInterval) clearInterval(timerInterval);
+      startTime = performance.now();
+      timerInterval = setInterval(() => {
+        const elapsed = (performance.now() - startTime) / 1000;
+        timerEl.textContent = elapsed.toFixed(3);
+      }, 10);
+    }
+
+    // 数字タップ時処理
+    function handleTap(btn, num) {
+      if (!isPlaying) return;
+
+      if (num === currentTarget) {
+        // 【正解】暗いトーンで残す
+        btn.className = `w-full h-full bg-slate-950/70 border border-slate-800/80 rounded-xl font-bold text-xl text-slate-700/80 flex items-center justify-center pointer-events-none transition-all`;
+        
+        currentTarget++;
+
+        if (currentTarget > 25) {
+          finishGame();
+        } else {
+          nextNumEl.textContent = currentTarget;
+        }
+      } else {
+        // 【不正解】揺れるアニメーション
+        btn.classList.add('animate-shake');
+        setTimeout(() => btn.classList.remove('animate-shake'), 300);
+      }
+    }
+
+    // クリア処理
+    function finishGame() {
+      clearInterval(timerInterval);
+      isPlaying = false;
+      const finalTimeStr = ((performance.now() - startTime) / 1000).toFixed(3);
+      const finalTime = parseFloat(finalTimeStr);
+      
+      timerEl.textContent = finalTimeStr;
+      document.getElementById('final-time').textContent = `${finalTimeStr}s`;
+
+      const newRecordBadge = document.getElementById('new-record-badge');
+      if (!bestTime || finalTime < parseFloat(bestTime)) {
+        bestTime = finalTime;
+        localStorage.setItem('number_search_best', finalTime);
+        bestTimeEl.textContent = finalTime.toFixed(3);
+        newRecordBadge.classList.remove('hidden');
+      } else {
+        newRecordBadge.classList.add('hidden');
+      }
+
+      modal.classList.remove('hidden');
+    }
+
+    // もう一度挑戦
+    function closeModalAndStart() {
+      modal.classList.add('hidden');
+      startGame();
+    }
+
+    // やめる
+    function quitGame() {
+      modal.classList.add('hidden');
+      window.close();
+      // セキュリティでブラウザタブが閉じられない場合のフォールバック（初期画面に戻す）
+      initBoard();
+    }
+  </script>
+</body>
+</html>
